@@ -1,18 +1,42 @@
 """Git clone/pull for project repositories (GitHub, GitLab, etc.)."""
+import logging
 import os
 import re
+import stat
 import subprocess
 import tempfile
 from pathlib import Path
 from typing import Optional
 
+logger = logging.getLogger(__name__)
+
 # Workspace root for cloned repos (one dir per project)
 WORKSPACE_DIR = Path(__file__).resolve().parent.parent / "workspace"
+
+# Allowlist for valid Git branch/tag name characters
+_BRANCH_RE = re.compile(r'^[a-zA-Z0-9._\-/]+$')
 
 
 def _workspace_path(project_id: int) -> Path:
     WORKSPACE_DIR.mkdir(parents=True, exist_ok=True)
     return WORKSPACE_DIR / f"project_{project_id}"
+
+
+def _validate_branch(branch: str) -> str:
+    """
+    Validate a Git branch/tag name to prevent command-option injection.
+    Raises ValueError if the name contains unsafe characters.
+    """
+    if not branch or not _BRANCH_RE.match(branch):
+        raise ValueError(
+            f"Invalid branch name {branch!r}. Only alphanumeric characters, "
+            "hyphens, underscores, dots, and slashes are allowed."
+        )
+    # Prevent names that start with '-' (would be interpreted as git options)
+    # or '..' (path traversal in refspecs).
+    if branch.startswith('-') or branch.startswith('..') or '..' in branch:
+        raise ValueError(f"Invalid branch name {branch!r}.")
+    return branch
 
 
 def _is_ssh_url(url: str) -> bool:
@@ -56,7 +80,7 @@ def clone_or_pull(
     if not raw:
         raise ValueError("git_url is required")
     url = normalize_git_url(raw)
-    branch = (branch or "main").strip()
+    branch = _validate_branch((branch or "main").strip())
     repo_path = _workspace_path(project_id)
 
     env = os.environ.copy()
@@ -67,9 +91,12 @@ def clone_or_pull(
             if not ssh_private_key.strip().endswith("\n"):
                 f.write("\n")
             key_file = f.name
+        # Restrict key file to owner-read/write only (SSH requires this)
+        os.chmod(key_file, stat.S_IRUSR | stat.S_IWUSR)
         env["GIT_SSH_COMMAND"] = f'ssh -i "{key_file}" -o StrictHostKeyChecking=accept-new'
     elif not _is_ssh_url(url) and https_token:
         # Inject token: https://x-access-token:TOKEN@host/path
+        # The token is passed via the URL; git may include it in error messages.
         if "://" in url:
             scheme, rest = url.split("://", 1)
             url = f"{scheme}://x-access-token:{https_token}@{rest}"

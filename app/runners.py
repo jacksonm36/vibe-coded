@@ -1,5 +1,6 @@
 """Run Ansible playbooks and capture output."""
 import os
+import stat
 import subprocess
 import tempfile
 from pathlib import Path
@@ -47,12 +48,16 @@ def run_playbook(
                 kf.write(credential_ssh_key.strip())
                 if not credential_ssh_key.strip().endswith("\n"):
                     kf.write("\n")
+            # Restrict to owner read/write only (SSH client requires this)
+            os.chmod(key_file, stat.S_IRUSR | stat.S_IWUSR)
             cmd.extend(["--private-key", key_file])
 
         if credential_vault_password:
             with tempfile.NamedTemporaryFile(mode="w", suffix=".vault", delete=False) as vf:
                 vault_file = vf.name
                 vf.write(credential_vault_password.strip() + "\n")
+            # Restrict to owner read/write only
+            os.chmod(vault_file, stat.S_IRUSR | stat.S_IWUSR)
             cmd.extend(["--vault-password-file", vault_file])
 
         cwd = os.path.dirname(os.path.abspath(playbook_path)) or "."
@@ -65,6 +70,8 @@ def run_playbook(
             with tempfile.NamedTemporaryFile(mode="w", suffix=".yml", delete=False) as evf:
                 extra_vars_file = evf.name
                 evf.write(f'ansible_ssh_pass: "{escaped}"\nansible_password: "{escaped}"\n')
+            # Restrict to owner read/write only
+            os.chmod(extra_vars_file, stat.S_IRUSR | stat.S_IWUSR)
             cmd.extend(["-e", f"@{extra_vars_file}"])
 
         proc = subprocess.Popen(
