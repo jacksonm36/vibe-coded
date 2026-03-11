@@ -16,16 +16,30 @@ WORKSPACE_DIR = Path(__file__).resolve().parent.parent / "workspace"
 # Allowlist for valid Git branch/tag name characters
 _BRANCH_RE = re.compile(r'^[a-zA-Z0-9._\-/]+$')
 
-# File patterns we treat as runnable artifacts (Ansible, shell, Terraform, etc.)
+# File patterns we treat as runnable artifacts (Ansible, shell, Terraform, automation, etc.)
 SUPPORTED_FILE_PATTERNS: tuple[str, ...] = (
+    # Ansible / YAML
     "*.yml",
     "*.yaml",
+    # Shell / Bash
     "*.sh",
     "*.bash",
+    "*.zsh",
+    "*.csh",
+    "*.ksh",
+    # Windows scripts
     "*.ps1",
+    "*.psm1",
+    "*.bat",
+    "*.cmd",
+    # Terraform / HCL
     "*.tf",
     "*.tfvars",
     "*.tf.json",
+    "*.hcl",
+    # Other automation / config
+    "*.py",
+    "*.rb",
 )
 
 
@@ -160,19 +174,70 @@ def clone_or_pull(
                 pass
 
 
+# Lowercase suffixes for case-insensitive walk (single extension only; *.tf.json handled by glob)
+_WALK_SUFFIXES: frozenset[str] = frozenset(
+    (
+        ".yml", ".yaml",
+        ".sh", ".bash", ".zsh", ".csh", ".ksh",
+        ".ps1", ".psm1", ".bat", ".cmd",
+        ".tf", ".tfvars", ".hcl",
+        ".py", ".rb",
+    )
+)
+
+
+def _should_skip_path(rel: Path) -> bool:
+    """Skip hidden dirs, .git, and Ansible var dirs."""
+    for part in rel.parts:
+        if part.startswith(".") or part in ("group_vars", "host_vars"):
+            return True
+    return False
+
+
 def list_playbooks_in_repo(repo_path: Path) -> list[str]:
     """
     Return relative paths of supported files under repo root.
-    Includes Ansible playbooks, shell scripts, and Terraform files for Job Templates.
+    Includes Ansible playbooks, shell scripts, Terraform, PowerShell, Python, etc.
+    Uses both glob patterns and a case-insensitive walk so storage repos with
+    mixed extensions (e.g. .SH, .ps1, .YML) are all found.
     """
+    seen: set[str] = set()
     playbooks: list[str] = []
+
+    # 1) Glob by pattern (primary)
     for ext in SUPPORTED_FILE_PATTERNS:
         for f in repo_path.rglob(ext):
             if f.is_file():
-                rel = f.relative_to(repo_path)
-                if any(part.startswith(".") for part in rel.parts):
+                try:
+                    rel = f.relative_to(repo_path)
+                except ValueError:
                     continue
-                if "group_vars" in rel.parts or "host_vars" in rel.parts:
+                if _should_skip_path(rel):
                     continue
-                playbooks.append(str(rel).replace("\\", "/"))
-    return sorted(dict.fromkeys(playbooks))
+                key = str(rel).replace("\\", "/")
+                if key not in seen:
+                    seen.add(key)
+                    playbooks.append(key)
+
+    # 2) Walk repo and add by suffix (case-insensitive) so .SH, .YML, .PS1, etc. are found
+    for root, _dirs, files in os.walk(repo_path, topdown=True):
+        root_path = Path(root)
+        try:
+            rel_root = root_path.relative_to(repo_path)
+        except ValueError:
+            continue
+        if _should_skip_path(rel_root):
+            _dirs[:] = []
+            continue
+        for name in files:
+            if name.startswith("."):
+                continue
+            suffix = Path(name).suffix.lower()
+            if suffix and suffix in _WALK_SUFFIXES:
+                rel_file = rel_root / name
+                key = str(rel_file).replace("\\", "/")
+                if key not in seen:
+                    seen.add(key)
+                    playbooks.append(key)
+
+    return sorted(playbooks)
