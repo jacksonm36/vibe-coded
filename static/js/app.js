@@ -331,8 +331,7 @@ function openProjectModal(id) {
       if (id) await fetchJSON(`${API}/projects/${id}`, { method: 'PATCH', body: JSON.stringify({ name, description: qs('#modal-desc').value, git_url, git_branch, git_credential_id }) });
       else await fetchJSON(`${API}/projects`, { method: 'POST', body: JSON.stringify({ name, description: qs('#modal-desc').value, git_url, git_branch, git_credential_id }) });
       closeModal();
-      loadAll();
-      render();
+      reloadAndRender();
     } catch (e) { showError(e); }
   };
 }
@@ -368,8 +367,7 @@ function openInventoryModal(id) {
       if (id) await fetchJSON(`${API}/inventories/${id}`, { method: 'PATCH', body: JSON.stringify({ name, content: qs('#modal-content').value }) });
       else await fetchJSON(`${API}/inventories`, { method: 'POST', body: JSON.stringify({ project_id, name, content: qs('#modal-content').value }) });
       closeModal();
-      loadAll();
-      render();
+      reloadAndRender();
     } catch (e) { showError(e); }
   };
 }
@@ -420,8 +418,7 @@ function openCredentialModal(id) {
         await fetchJSON(`${API}/credentials/${id}`, { method: 'PATCH', body: JSON.stringify(body) });
       } else await fetchJSON(`${API}/credentials`, { method: 'POST', body: JSON.stringify({ project_id, name, kind, secret: secret || 'x', extra: '' }) });
       closeModal();
-      loadAll();
-      render();
+      reloadAndRender();
     } catch (e) { showError(e); }
   };
 }
@@ -476,8 +473,7 @@ function openTemplateModal(id) {
       if (id) await fetchJSON(`${API}/job_templates/${id}`, { method: 'PATCH', body: JSON.stringify({ name, playbook_path, inventory_id, credential_id, extra_vars }) });
       else await fetchJSON(`${API}/job_templates`, { method: 'POST', body: JSON.stringify({ project_id, name, playbook_path, inventory_id, credential_id, extra_vars }) });
       closeModal();
-      loadAll();
-      render();
+      reloadAndRender();
     } catch (e) { showError(e); }
   };
 }
@@ -486,8 +482,7 @@ async function deleteProject(id) {
   if (!confirm('Delete this project and all its inventories, credentials, and templates?')) return;
   try {
     await fetchJSON(`${API}/projects/${id}`, { method: 'DELETE' });
-    loadAll();
-    render();
+    reloadAndRender();
   } catch (e) { showError(e); }
 }
 
@@ -495,8 +490,7 @@ async function deleteInventory(id) {
   if (!confirm('Delete this inventory?')) return;
   try {
     await fetchJSON(`${API}/inventories/${id}`, { method: 'DELETE' });
-    loadAll();
-    render();
+    reloadAndRender();
   } catch (e) { showError(e); }
 }
 
@@ -504,8 +498,7 @@ async function deleteCredential(id) {
   if (!confirm('Delete this credential?')) return;
   try {
     await fetchJSON(`${API}/credentials/${id}`, { method: 'DELETE' });
-    loadAll();
-    render();
+    reloadAndRender();
   } catch (e) { showError(e); }
 }
 
@@ -513,8 +506,7 @@ async function deleteTemplate(id) {
   if (!confirm('Delete this job template?')) return;
   try {
     await fetchJSON(`${API}/job_templates/${id}`, { method: 'DELETE' });
-    loadAll();
-    render();
+    reloadAndRender();
   } catch (e) { showError(e); }
 }
 
@@ -525,11 +517,11 @@ async function pullProject(id) {
     const res = await fetchJSON(`${API}/projects/${id}/pull`, { method: 'POST' });
     const list = (res.playbooks || []).length
       ? '<ul class="playbook-list">' + (res.playbooks || []).map(pb => '<li><code>' + escapeHtml(pb) + '</code></li>').join('') + '</ul>'
-      : '<p class="empty-state">No .yml/.yaml playbooks found in the repo.</p>';
+      : '<p class="empty-state">No supported files (YAML, shell, Terraform, etc.) found in the repo.</p>';
     showModal(
       'Pull from Git',
-      `<p>${escapeHtml(res.message || 'Pulled successfully.')}</p><p><strong>Playbooks found (use these paths in Job Templates):</strong></p>${list}`,
-      '<button class="btn btn-primary" onclick="closeModal(); loadAll(); render();">Close</button>'
+      `<p>${escapeHtml(res.message || 'Pulled successfully.')}</p><p><strong>Files found (use these paths in Job Templates):</strong></p>${list}`,
+      '<button class="btn btn-primary" onclick="closeModal(); reloadAndRender();">Close</button>'
     );
   } catch (e) {
     showError(e);
@@ -539,8 +531,7 @@ async function pullProject(id) {
 async function launchJob(templateId) {
   try {
     const job = await fetchJSON(`${API}/jobs/launch`, { method: 'POST', body: JSON.stringify({ job_template_id: templateId, extra_vars_override: '' }) });
-    jobs.unshift(job);
-    render();
+    await reloadAndRender();
     viewJob(job.id);
   } catch (e) { showError(e); }
 }
@@ -559,7 +550,7 @@ function viewJob(id) {
           <pre class="log-output">${escapeHtml(job.output_log || '(no output yet)')}</pre>
         </div>
       `,
-      `<button class="btn btn-primary" onclick="closeModal(); loadAll(); render();">Close</button>`
+      `<button class="btn btn-primary" onclick="closeModal(); reloadAndRender();">Close</button>`
     );
   }).catch(e => showError(e));
 }
@@ -591,8 +582,13 @@ async function loadAll() {
   }
 }
 
+async function reloadAndRender() {
+  await loadAll();
+  render();
+}
+
 // Init: nav + load data + render
 qsAll('.sidebar-nav a').forEach(a => {
   a.onclick = (e) => { e.preventDefault(); setPage(a.dataset.page); };
 });
-loadAll().then(() => render());
+reloadAndRender();
