@@ -10,7 +10,8 @@ from sqlalchemy.orm import Session
 
 from app import crud
 
-# Script extensions and the command to run them (interpreter + optional args)
+# Script extensions and the command to run them (interpreter + optional args).
+# .yml and .yaml are NOT here — they always run as native Ansible playbooks (ansible-playbook).
 SCRIPT_RUNNERS = {
     ".sh": ["bash"],
     ".bash": ["bash"],
@@ -27,6 +28,7 @@ SCRIPT_RUNNERS = {
 
 
 def _is_script(path: str) -> bool:
+    """True if path is a script (e.g. .sh, .ps1); False for .yml/.yaml (native Ansible playbooks)."""
     ext = Path(path).suffix.lower()
     return ext in SCRIPT_RUNNERS
 

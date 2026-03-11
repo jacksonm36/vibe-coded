@@ -240,4 +240,10 @@ def list_playbooks_in_repo(repo_path: Path) -> list[str]:
                     seen.add(key)
                     playbooks.append(key)
 
-    return sorted(playbooks)
+    # Sort: native Ansible playbooks (.yml/.yaml) first, then the rest alphabetically
+    def _sort_key(p: str) -> tuple[int, str]:
+        lower = p.lower()
+        is_ansible = 0 if (lower.endswith(".yml") or lower.endswith(".yaml")) else 1
+        return (is_ansible, p)
+
+    return sorted(playbooks, key=_sort_key)

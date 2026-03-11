@@ -439,8 +439,8 @@ function openTemplateModal(id) {
         <input type="text" id="modal-name" value="${jt ? escapeHtml(jt.name) : ''}" placeholder="Template name">
       </div>
       <div class="form-group">
-        <label>Playbook path (absolute or relative)</label>
-        <input type="text" id="modal-playbook" value="${jt ? escapeHtml(jt.playbook_path) : ''}" placeholder="/path/to/playbook.yml">
+        <label>Playbook or script path</label>
+        <input type="text" id="modal-playbook" value="${jt ? escapeHtml(jt.playbook_path) : ''}" placeholder="e.g. playbook.yml (Ansible) or clamscan.sh (script)">
       </div>
       <div class="form-group">
         <label>Inventory</label>
@@ -520,7 +520,7 @@ async function pullProject(id) {
       : '<p class="empty-state">No supported files found. We look for: .yml, .yaml, .sh, .bash, .ps1, .bat, .cmd, .tf, .hcl, .py, .rb and similar (case-insensitive).</p>';
     showModal(
       'Pull from Git',
-      `<p>${escapeHtml(res.message || 'Pulled successfully.')}</p><p><strong>Files found (use these paths in Job Templates):</strong></p>${list}`,
+      `<p>${escapeHtml(res.message || 'Pulled successfully.')}</p><p><strong>Files found (use in Job Templates):</strong></p><p class="text-muted" style="font-size:0.85rem;margin-top:0.25rem;">.yml/.yaml = Ansible playbooks (run with inventory). .sh, .ps1, .py, etc. = scripts (run directly).</p>${list}`,
       '<button class="btn btn-primary" onclick="closeModal(); reloadAndRender();">Close</button>'
     );
   } catch (e) {
