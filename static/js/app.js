@@ -517,10 +517,10 @@ async function pullProject(id) {
     const res = await fetchJSON(`${API}/projects/${id}/pull`, { method: 'POST' });
     const list = (res.playbooks || []).length
       ? '<ul class="playbook-list">' + (res.playbooks || []).map(pb => '<li><code>' + escapeHtml(pb) + '</code></li>').join('') + '</ul>'
-      : '<p class="empty-state">No .yml/.yaml playbooks found in the repo.</p>';
+      : '<p class="empty-state">No supported files (YAML, shell, Terraform, etc.) found in the repo.</p>';
     showModal(
       'Pull from Git',
-      `<p>${escapeHtml(res.message || 'Pulled successfully.')}</p><p><strong>Playbooks found (use these paths in Job Templates):</strong></p>${list}`,
+      `<p>${escapeHtml(res.message || 'Pulled successfully.')}</p><p><strong>Files found (use these paths in Job Templates):</strong></p>${list}`,
       '<button class="btn btn-primary" onclick="closeModal(); reloadAndRender();">Close</button>'
     );
   } catch (e) {

@@ -16,6 +16,18 @@ WORKSPACE_DIR = Path(__file__).resolve().parent.parent / "workspace"
 # Allowlist for valid Git branch/tag name characters
 _BRANCH_RE = re.compile(r'^[a-zA-Z0-9._\-/]+$')
 
+# File patterns we treat as runnable artifacts (Ansible, shell, Terraform, etc.)
+SUPPORTED_FILE_PATTERNS: tuple[str, ...] = (
+    "*.yml",
+    "*.yaml",
+    "*.sh",
+    "*.bash",
+    "*.ps1",
+    "*.tf",
+    "*.tfvars",
+    "*.tf.json",
+)
+
 
 def _workspace_path(project_id: int) -> Path:
     WORKSPACE_DIR.mkdir(parents=True, exist_ok=True)
@@ -149,9 +161,13 @@ def clone_or_pull(
 
 
 def list_playbooks_in_repo(repo_path: Path) -> list[str]:
-    """Return relative paths of .yml/.yaml files under repo root (common playbook names)."""
-    playbooks = []
-    for ext in ("*.yml", "*.yaml"):
+    """
+    Return relative paths of supported files under repo root.
+    By default we include common Ansible playbook extensions plus shell scripts
+    and Terraform files so they can be referenced from Job Templates.
+    """
+    playbooks: list[str] = []
+    for ext in SUPPORTED_FILE_PATTERNS:
         for f in repo_path.rglob(ext):
             if f.is_file():
                 rel = f.relative_to(repo_path)
@@ -161,4 +177,6 @@ def list_playbooks_in_repo(repo_path: Path) -> list[str]:
                 if "group_vars" in rel.parts or "host_vars" in rel.parts:
                     continue
                 playbooks.append(str(rel).replace("\\", "/"))
-    return sorted(playbooks)
+    # De-duplicate while preserving order, then sort for stable display
+    unique = sorted(dict.fromkeys(playbooks))
+    return unique
