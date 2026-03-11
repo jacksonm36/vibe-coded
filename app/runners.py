@@ -2,6 +2,7 @@
 import os
 import stat
 import subprocess
+import sys
 import tempfile
 from pathlib import Path
 from typing import Optional
@@ -125,11 +126,24 @@ def run_playbook(
     vault_file = None
     extra_vars_file = None
     try:
+        playbook_abs = os.path.abspath(playbook_path)
+        if not os.path.isfile(playbook_abs):
+            crud.update_job_status(db, job_id, "failed", f"Playbook file not found: {playbook_abs}")
+            return "failed", f"Playbook file not found: {playbook_abs}"
+
+        env = os.environ.copy()
+        # Ansible requires UTF-8 locale (e.g. Windows code page 1250 fails)
+        env.setdefault("PYTHONIOENCODING", "utf-8")
+        env.setdefault("PYTHONUTF8", "1")
+
+        # Use same Python as the app: python -m ansible.cli.playbook (avoids PATH/WinError 2 on Windows)
+        cmd_head = [sys.executable, "-m", "ansible.cli.playbook"]
+
         with tempfile.NamedTemporaryFile(mode="w", suffix=".ini", delete=False) as f:
             inv_file = f.name
             f.write(inventory_content or "[all]\nlocalhost ansible_connection=local\n")
 
-        cmd = ["ansible-playbook", playbook_path, "-i", inv_file]
+        cmd = cmd_head + [playbook_abs, "-i", inv_file]
         if extra_vars and extra_vars.strip():
             cmd.extend(["-e", extra_vars.strip()])
 
@@ -152,7 +166,6 @@ def run_playbook(
             cmd.extend(["--vault-password-file", vault_file])
 
         cwd = os.path.dirname(os.path.abspath(playbook_path)) or "."
-        env = os.environ.copy()
 
         # SSH password: pass via extra vars file (Ansible uses ansible_password / ansible_ssh_pass)
         extra_vars_file = None
@@ -182,8 +195,11 @@ def run_playbook(
         status = "failed"
     except FileNotFoundError as e:
         out = str(e)
-        if "ansible-playbook" in out:
-            out = "ansible-playbook not found. Install Ansible (e.g. pip install ansible)."
+        if "ansible-playbook" in out or "WinError 2" in out or "cannot find the file" in out.lower():
+            out = (
+                "ansible-playbook not found. Install Ansible in the same environment as the app: "
+                "pip install ansible (e.g. .venv\\Scripts\\pip install ansible on Windows)."
+            )
         status = "failed"
     except Exception as e:
         out = str(e)

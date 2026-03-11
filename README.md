@@ -19,7 +19,7 @@ A self-hosted Ansible web UI with a **Red Hat Ansible–style** interface and da
 ## Requirements
 
 - **Python 3.10+**
-- **Ansible** (for running playbooks)
+- **Ansible** – included in `requirements.txt`; installs natively on **Windows, Linux, and macOS** with `pip install -r requirements.txt` (no separate step)
 - **Git** (optional; for cloning playbooks from GitHub/GitLab)
 
 ---
@@ -38,12 +38,11 @@ A self-hosted Ansible web UI with a **Red Hat Ansible–style** interface and da
    cd vibe-coded
    ```
 
-3. **Create a virtual environment and install dependencies**
+3. **Create a virtual environment and install dependencies** (Ansible is included)
    ```powershell
    python -m venv .venv
    .venv\Scripts\activate
    pip install -r requirements.txt
-   pip install ansible
    ```
 
 4. **Run the app**
@@ -57,10 +56,10 @@ A self-hosted Ansible web UI with a **Red Hat Ansible–style** interface and da
 
 ### Linux (Debian / Ubuntu)
 
-1. **Install Python, venv, Git, and Ansible**
+1. **Install Python, venv, and Git** (Ansible installs via pip with the app)
    ```bash
    sudo apt update
-   sudo apt install -y python3 python3-pip python3-venv git ansible
+   sudo apt install -y python3 python3-pip python3-venv git
    ```
 
 2. **Clone the repo**
@@ -88,17 +87,13 @@ A self-hosted Ansible web UI with a **Red Hat Ansible–style** interface and da
 
 ### Linux (RHEL / CentOS / Fedora)
 
-1. **Install Python and Git**
+1. **Install Python and Git** (Ansible installs via pip with the app)
    ```bash
    # Fedora / RHEL 8+
    sudo dnf install -y python3 python3-pip python3-virtualenv git
-
-   # Install Ansible
-   sudo dnf install -y ansible
-   # or: pip install ansible
    ```
 
-2. **Clone and run**
+2. **Clone and run** (Ansible is in requirements.txt)
    ```bash
    git clone https://github.com/jacksonm36/vibe-coded.git
    cd vibe-coded
@@ -117,14 +112,13 @@ A self-hosted Ansible web UI with a **Red Hat Ansible–style** interface and da
    brew install python@3.11
    ```
 
-2. **Clone and run**
+2. **Clone and run** (Ansible is in requirements.txt)
    ```bash
    git clone https://github.com/jacksonm36/vibe-coded.git
    cd vibe-coded
    python3 -m venv .venv
    source .venv/bin/activate
    pip install -r requirements.txt
-   pip install ansible
    uvicorn app.main:app --host 0.0.0.0 --port 8000
    ```
 
@@ -155,7 +149,6 @@ sudo git clone https://github.com/jacksonm36/vibe-coded.git /opt/ansible-ui
 cd /opt/ansible-ui
 sudo python3 -m venv .venv
 sudo .venv/bin/pip install -r requirements.txt
-sudo .venv/bin/pip install ansible
 ```
 
 ### 2. (Optional) Create a dedicated user

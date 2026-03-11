@@ -32,12 +32,32 @@ let credentials = [];
 let jobTemplates = [];
 let jobs = [];
 
+const REFRESH_INTERVAL_MS = 4000;
+let refreshIntervalId = null;
+
+function clearRefresh() {
+  if (refreshIntervalId) {
+    clearInterval(refreshIntervalId);
+    refreshIntervalId = null;
+  }
+}
+
+function startRefresh() {
+  clearRefresh();
+  refreshIntervalId = setInterval(async () => {
+    await loadAll();
+    render();
+  }, REFRESH_INTERVAL_MS);
+}
+
 function setPage(page) {
   currentPage = page;
   qsAll('.sidebar-nav a').forEach(a => {
     a.classList.toggle('active', a.dataset.page === page);
   });
   render();
+  clearRefresh();
+  if (page === 'dashboard' || page === 'jobs') startRefresh();
 }
 
 function render() {
@@ -587,8 +607,10 @@ async function reloadAndRender() {
   render();
 }
 
-// Init: nav + load data + render
+// Init: nav + load data + render + auto-refresh on dashboard/jobs
 qsAll('.sidebar-nav a').forEach(a => {
   a.onclick = (e) => { e.preventDefault(); setPage(a.dataset.page); };
 });
-reloadAndRender();
+reloadAndRender().then(() => {
+  if (currentPage === 'dashboard' || currentPage === 'jobs') startRefresh();
+});
