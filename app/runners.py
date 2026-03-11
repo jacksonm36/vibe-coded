@@ -1,4 +1,4 @@
-"""Run Ansible playbooks and capture output."""
+"""Run Ansible playbooks or scripts (shell, PowerShell, Python, etc.) and capture output."""
 import os
 import stat
 import subprocess
@@ -9,6 +9,81 @@ from typing import Optional
 from sqlalchemy.orm import Session
 
 from app import crud
+
+# Script extensions and the command to run them (interpreter + optional args)
+SCRIPT_RUNNERS = {
+    ".sh": ["bash"],
+    ".bash": ["bash"],
+    ".zsh": ["zsh"],
+    ".csh": ["csh"],
+    ".ksh": ["ksh"],
+    ".ps1": ["powershell", "-ExecutionPolicy", "Bypass", "-File"],
+    ".psm1": ["powershell", "-ExecutionPolicy", "Bypass", "-File"],
+    ".bat": ["cmd", "/c"],
+    ".cmd": ["cmd", "/c"],
+    ".py": ["python3"],
+    ".rb": ["ruby"],
+}
+
+
+def _is_script(path: str) -> bool:
+    ext = Path(path).suffix.lower()
+    return ext in SCRIPT_RUNNERS
+
+
+def _run_script(
+    script_path: str,
+    extra_vars: str,
+    timeout: int = 3600,
+) -> tuple[int, str]:
+    """Run a script with the appropriate interpreter. Returns (returncode, output)."""
+    ext = Path(script_path).suffix.lower()
+    runner = list(SCRIPT_RUNNERS.get(ext, []))
+    if not runner:
+        return 1, f"No runner for extension {ext}."
+
+    abs_path = os.path.abspath(script_path)
+    if not os.path.isfile(abs_path):
+        return 1, f"Script not found: {abs_path}"
+
+    cwd = os.path.dirname(abs_path)
+    # Prefer pwsh on non-Windows for PowerShell scripts
+    if ext in (".ps1", ".psm1") and os.name != "nt":
+        try:
+            subprocess.run(["pwsh", "--version"], capture_output=True, timeout=2)
+            runner = ["pwsh", "-ExecutionPolicy", "Bypass", "-File"]
+        except (FileNotFoundError, subprocess.TimeoutExpired):
+            pass
+    cmd = runner + [abs_path]
+
+    # On Windows, prefer python over python3 if we're running .py
+    if ext == ".py" and os.name == "nt":
+        try:
+            subprocess.run(["python", "--version"], capture_output=True, timeout=2)
+            cmd = ["python", abs_path]
+        except (FileNotFoundError, subprocess.TimeoutExpired):
+            pass
+
+    env = os.environ.copy()
+    if extra_vars and extra_vars.strip():
+        for line in extra_vars.strip().splitlines():
+            line = line.strip()
+            if "=" in line and not line.startswith("#"):
+                key, _, val = line.partition("=")
+                key = key.strip()
+                if key:
+                    env[key] = val.strip().strip('"').strip("'")
+
+    proc = subprocess.Popen(
+        cmd,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.STDOUT,
+        text=True,
+        cwd=cwd,
+        env=env,
+    )
+    out, _ = proc.communicate(timeout=timeout)
+    return proc.returncode, (out or "")
 
 
 def run_playbook(
@@ -28,6 +103,20 @@ def run_playbook(
     Returns (status, output_log).
     """
     crud.update_job_status(db, job_id, "running", "")
+
+    # Run as script (shell, PowerShell, Python, etc.) if path has a script extension
+    if _is_script(playbook_path):
+        try:
+            code, out = _run_script(playbook_path, extra_vars or "")
+            status = "success" if code == 0 else "failed"
+        except subprocess.TimeoutExpired:
+            out = "Job timed out after 3600s."
+            status = "failed"
+        except Exception as e:
+            out = str(e)
+            status = "failed"
+        crud.update_job_status(db, job_id, status, out)
+        return status, out
 
     inv_file = None
     key_file = None
