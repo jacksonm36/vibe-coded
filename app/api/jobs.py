@@ -35,8 +35,17 @@ def _resolve_playbook_path_and_credentials(db: Session, jt, inv_content: str, ex
                 ssh_private_key=ssh_key,
                 https_token=https_token,
             )
-            # Playbook path is relative to repo root
-            playbook_path = str(repo_path / playbook_path.lstrip("/\\"))
+            # Playbook path is relative to repo root.
+            # Resolve to absolute path and verify it stays inside the repo.
+            candidate = (repo_path / playbook_path.lstrip("/\\")).resolve()
+            repo_abs = repo_path.resolve()
+            if not (str(candidate) == str(repo_abs) or str(candidate).startswith(str(repo_abs) + "/")):
+                raise ValueError(
+                    "Playbook path escapes the repository directory."
+                )
+            playbook_path = str(candidate)
+        except RuntimeError:
+            raise
         except Exception as e:
             raise RuntimeError(f"Git sync failed: {e}") from e
 
