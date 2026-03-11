@@ -143,41 +143,50 @@ A self-hosted Ansible web UI with a **Red Hat Ansible–style** interface and da
 
 ---
 
-## Optional: run as a service (Linux)
+## Run as a systemd service (Linux)
 
-Create a systemd unit so the app starts on boot and restarts on failure:
+A unit file is included: **`ansible-ui.service`**.
 
-```bash
-sudo nano /etc/systemd/system/ansible-ui.service
-```
-
-Paste (adjust `YourUser` and paths):
-
-```ini
-[Unit]
-Description=Ansible Control Panel
-After=network.target
-
-[Service]
-Type=simple
-User=YourUser
-WorkingDirectory=/home/YourUser/vibe-coded
-Environment="PATH=/home/YourUser/vibe-coded/.venv/bin"
-ExecStart=/home/YourUser/vibe-coded/.venv/bin/uvicorn app.main:app --host 0.0.0.0 --port 8000
-Restart=always
-RestartSec=5
-
-[Install]
-WantedBy=multi-user.target
-```
-
-Then:
+### 1. Install the app (e.g. under `/opt/ansible-ui`)
 
 ```bash
+sudo mkdir -p /opt/ansible-ui
+sudo git clone https://github.com/jacksonm36/vibe-coded.git /opt/ansible-ui
+cd /opt/ansible-ui
+sudo python3 -m venv .venv
+sudo .venv/bin/pip install -r requirements.txt
+sudo .venv/bin/pip install ansible
+```
+
+### 2. (Optional) Create a dedicated user
+
+```bash
+sudo useradd -r -s /bin/false ansible-ui
+sudo chown -R ansible-ui:ansible-ui /opt/ansible-ui
+```
+
+If you skip this, edit the service file and set `User=` and `Group=` to your own user (e.g. `User=pi`), and set `WorkingDirectory=` and paths in `Environment=`/`ExecStart=` to your install path (e.g. `/home/pi/vibe-coded`).
+
+### 3. Install and enable the service
+
+```bash
+sudo cp /opt/ansible-ui/ansible-ui.service /etc/systemd/system/
+# If you used a different path or user, edit the file first:
+# sudo nano /etc/systemd/system/ansible-ui.service
+
 sudo systemctl daemon-reload
 sudo systemctl enable ansible-ui
 sudo systemctl start ansible-ui
 sudo systemctl status ansible-ui
+```
+
+### 4. Useful commands
+
+```bash
+sudo systemctl stop ansible-ui      # stop
+sudo systemctl start ansible-ui     # start
+sudo systemctl restart ansible-ui   # restart
+sudo journalctl -u ansible-ui -f    # follow logs
 ```
 
 ---
