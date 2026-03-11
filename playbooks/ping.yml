@@ -1,0 +1,9 @@
+---
+# Minimal playbook for testing the Control Panel.
+# Use inventory: [all]\nlocalhost ansible_connection=local
+- name: Ping test
+  hosts: all
+  gather_facts: false
+  tasks:
+    - name: Ping
+      ansible.builtin.ping:

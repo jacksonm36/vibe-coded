@@ -1,0 +1,31 @@
+[Unit]
+Description=Ansible Control Panel (vibe-coded)
+Documentation=https://github.com/jacksonm36/vibe-coded
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=ansible-ui
+Group=ansible-ui
+
+# Install directory (clone repo here, e.g. /opt/ansible-ui or /home/ansible-ui/vibe-coded)
+WorkingDirectory=/opt/ansible-ui
+
+# Use the venv Python and uvicorn
+Environment="PATH=/opt/ansible-ui/.venv/bin:/usr/local/bin:/usr/bin:/bin"
+ExecStart=/opt/ansible-ui/.venv/bin/uvicorn app.main:app --host 0.0.0.0 --port 8000
+
+# Restart on failure
+Restart=always
+RestartSec=5
+
+# Security: no new privileges, private /tmp
+NoNewPrivileges=true
+PrivateTmp=true
+
+# Optional: read env from file (e.g. DATABASE_URL, ANSIBLE_UI_SECRET_KEY)
+# EnvironmentFile=/opt/ansible-ui/.env
+
+[Install]
+WantedBy=multi-user.target
