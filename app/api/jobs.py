@@ -110,35 +110,18 @@ def launch_job(data: schemas.JobLaunch, background_tasks: BackgroundTasks, db: S
         status="pending",
     )
 
-    def run():
-        from app.database import SessionLocal
-        db2 = SessionLocal()
-        try:
-            # Resolve path and credentials again in worker (Git sync, etc.)
-            jt2 = crud.get_job_template(db2, jt.id)
-            if not jt2:
-                return
-            inv_content2 = inv_content
-            extra2 = extra
-            try:
-                playbook_path2, inv_content2, extra2, ssh_key2, ssh_password2, vault_pass2 = _resolve_playbook_path_and_credentials(
-                    db2, jt2, inv_content2, extra2
-                )
-            except Exception as e:
-                crud.update_job_status(db2, job.id, "failed", f"Setup failed: {e}")
-                return
-            runners.run_playbook(
-                db2,
-                job_id=job.id,
-                playbook_path=playbook_path2,
-                inventory_content=inv_content2,
-                extra_vars=extra2,
-                credential_ssh_key=ssh_key2,
-                credential_ssh_password=ssh_password2,
-                credential_vault_password=vault_pass2,
-            )
-        finally:
-            db2.close()
+    # Run synchronously for now so status/output always update reliably.
+    # This avoids issues with background task execution on some platforms.
+    runners.run_playbook(
+        db,
+        job_id=job.id,
+        playbook_path=playbook_path,
+        inventory_content=inv_content,
+        extra_vars=extra,
+        credential_ssh_key=ssh_key,
+        credential_ssh_password=ssh_password,
+        credential_vault_password=vault_pass,
+    )
 
-    background_tasks.add_task(run)
-    return job
+    # Re-fetch the job so we return final status/output, not just the initial pending row.
+    return crud.get_job(db, job.id)
