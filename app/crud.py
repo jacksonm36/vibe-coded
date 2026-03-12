@@ -255,3 +255,12 @@ def update_job_status(db: Session, id: int, status: str, output_log: str = None)
     db.commit()
     db.refresh(j)
     return j
+
+
+def delete_job(db: Session, id: int) -> bool:
+    j = get_job(db, id)
+    if not j:
+        return False
+    db.delete(j)
+    db.commit()
+    return True

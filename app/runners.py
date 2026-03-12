@@ -135,6 +135,8 @@ def run_playbook(
         # Ansible requires UTF-8 locale (e.g. Windows code page 1250 fails)
         env.setdefault("PYTHONIOENCODING", "utf-8")
         env.setdefault("PYTHONUTF8", "1")
+        # Skip SSH host key verification so you don't have to ssh to each host first
+        env.setdefault("ANSIBLE_HOST_KEY_CHECKING", "False")
 
         # Use same Python as the app: python -m ansible.cli.playbook (avoids PATH/WinError 2 on Windows)
         cmd_head = [sys.executable, "-m", "ansible.cli.playbook"]

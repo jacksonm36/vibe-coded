@@ -82,6 +82,13 @@ def get_job(id: int, db: Session = Depends(get_db)):
     return j
 
 
+@router.delete("/{id}", status_code=204)
+def delete_job(id: int, db: Session = Depends(get_db)):
+    if not crud.delete_job(db, id):
+        raise HTTPException(status_code=404, detail="Job not found")
+    return None
+
+
 @router.post("/launch", response_model=schemas.JobRead)
 def launch_job(data: schemas.JobLaunch, background_tasks: BackgroundTasks, db: Session = Depends(get_db)):
     jt = crud.get_job_template(db, data.job_template_id)

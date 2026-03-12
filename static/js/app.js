@@ -45,8 +45,12 @@ function clearRefresh() {
 function startRefresh() {
   clearRefresh();
   refreshIntervalId = setInterval(async () => {
-    await loadAll();
-    render();
+    try {
+      await loadAll();
+      render();
+    } catch (err) {
+      console.error('Auto-refresh:', err);
+    }
   }, REFRESH_INTERVAL_MS);
 }
 
@@ -99,6 +103,8 @@ function runAction(action, id, el) {
   if (action === 'delete-template') deleteTemplate(id);
   if (action === 'launch-job') launchJob(id);
   if (action === 'view-job') viewJob(id);
+  if (action === 'delete-job') deleteJob(id);
+  if (action === 'delete-job-history') deleteJobHistory();
   if (action === 'pull-project') pullProject(id);
 }
 
@@ -270,7 +276,10 @@ function renderJobs() {
   return `
     <h1 class="page-title">Jobs</h1>
     <div class="card">
-      <div class="card-header">Job history</div>
+      <div class="card-header">
+        Job history
+        <button class="btn btn-danger btn-sm float-right" data-action="delete-job-history">Clear all</button>
+      </div>
       <div class="table-wrap">
         <table>
           <thead><tr><th>ID</th><th>Playbook</th><th>Status</th><th>Started</th><th>Finished</th><th></th></tr></thead>
@@ -282,7 +291,10 @@ function renderJobs() {
                 <td><span class="badge badge-${j.status}">${j.status}</span></td>
                 <td>${j.started_at ? new Date(j.started_at).toLocaleString() : '—'}</td>
                 <td>${j.finished_at ? new Date(j.finished_at).toLocaleString() : '—'}</td>
-                <td><button class="btn btn-sm btn-secondary" data-action="view-job" data-id="${j.id}">View log</button></td>
+                <td>
+                  <button class="btn btn-sm btn-secondary" data-action="view-job" data-id="${j.id}">View log</button>
+                  <button class="btn btn-sm btn-danger" data-action="delete-job" data-id="${j.id}">Delete</button>
+                </td>
               </tr>
             `).join('') : '<tr><td colspan="6" class="empty-state">No jobs yet.</td></tr>'}
           </tbody>
@@ -558,6 +570,22 @@ async function launchJob(templateId) {
   } catch (e) { showError(e); }
 }
 
+async function deleteJob(id) {
+  if (!confirm('Delete this job from history?')) return;
+  try {
+    await fetchJSON(`${API}/jobs/${id}`, { method: 'DELETE' });
+    await reloadAndRender();
+  } catch (e) { showError(e); }
+}
+
+async function deleteJobHistory() {
+  if (!jobs.length) return;
+  if (!confirm('Delete all jobs from history?')) return;
+  try {
+    await Promise.all(jobs.map(j => fetchJSON(`${API}/jobs/${j.id}`, { method: 'DELETE' })).reverse());
+    await reloadAndRender();
+  } catch (e) { showError(e); }
+}
 function viewJob(id) {
   fetchJSON(`${API}/jobs/${id}`).then(job => {
     showModal(
@@ -596,11 +624,7 @@ async function loadAll() {
     jobs = await fetchJSON(`${API}/jobs?limit=100`);
   } catch (e) {
     console.error(e);
-    projects = [];
-    inventories = [];
-    credentials = [];
-    jobTemplates = [];
-    jobs = [];
+    // Keep existing data so one failed poll doesn't wipe the UI
   }
 }
 
@@ -613,6 +637,6 @@ async function reloadAndRender() {
 qsAll('.sidebar-nav a').forEach(a => {
   a.onclick = (e) => { e.preventDefault(); setPage(a.dataset.page); };
 });
-reloadAndRender().then(() => {
+reloadAndRender().finally(() => {
   startRefresh();
 });
