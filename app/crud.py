@@ -247,11 +247,11 @@ def update_job_status(db: Session, id: int, status: str, output_log: str = None)
     j.status = status
     if output_log is not None:
         j.output_log = output_log
-    from datetime import datetime
+    from datetime import datetime, timezone
     if status == "running" and not j.started_at:
-        j.started_at = datetime.utcnow()
+        j.started_at = datetime.now(timezone.utc)
     if status in ("success", "failed"):
-        j.finished_at = datetime.utcnow()
+        j.finished_at = datetime.now(timezone.utc)
     db.commit()
     db.refresh(j)
     return j

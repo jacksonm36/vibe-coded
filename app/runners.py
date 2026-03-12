@@ -1,11 +1,14 @@
 """Run Ansible playbooks or scripts (shell, PowerShell, Python, etc.) and capture output."""
 import os
+import re
 import stat
 import subprocess
 import sys
 import tempfile
 from pathlib import Path
 from typing import Optional
+
+import yaml
 
 from sqlalchemy.orm import Session
 
@@ -26,6 +29,9 @@ SCRIPT_RUNNERS = {
     ".py": ["python3"],
     ".rb": ["ruby"],
 }
+
+# Pre-compiled pattern for validating environment variable names.
+_ENV_VAR_RE = re.compile(r'^[A-Za-z_][A-Za-z0-9_]*$')
 
 
 def _is_script(path: str) -> bool:
@@ -74,7 +80,9 @@ def _run_script(
             if "=" in line and not line.startswith("#"):
                 key, _, val = line.partition("=")
                 key = key.strip()
-                if key:
+                # Only allow safe environment variable names (alphanumeric + underscore,
+                # must not start with a digit) to prevent PATH/LD_PRELOAD injection.
+                if key and _ENV_VAR_RE.match(key):
                     env[key] = val.strip().strip('"').strip("'")
 
     proc = subprocess.Popen(
@@ -172,10 +180,15 @@ def run_playbook(
         # SSH password: pass via extra vars file (Ansible uses ansible_password / ansible_ssh_pass)
         extra_vars_file = None
         if credential_ssh_password:
-            escaped = credential_ssh_password.replace("\\", "\\\\").replace('"', '\\"')
+            # Use yaml.safe_dump to ensure correct YAML encoding of any password content
+            # (handles special characters, quotes, backslashes, newlines, etc.)
+            vars_content = yaml.safe_dump({
+                "ansible_ssh_pass": credential_ssh_password,
+                "ansible_password": credential_ssh_password,
+            }, default_flow_style=False)
             with tempfile.NamedTemporaryFile(mode="w", suffix=".yml", delete=False) as evf:
                 extra_vars_file = evf.name
-                evf.write(f'ansible_ssh_pass: "{escaped}"\nansible_password: "{escaped}"\n')
+                evf.write(vars_content)
             # Restrict to owner read/write only
             os.chmod(extra_vars_file, stat.S_IRUSR | stat.S_IWUSR)
             cmd.extend(["-e", f"@{extra_vars_file}"])

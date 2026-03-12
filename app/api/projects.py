@@ -44,7 +44,7 @@ def create_project(data: schemas.ProjectCreate, db: Session = Depends(get_db)):
         return _project_to_read(p)
     except Exception as e:
         logger.exception("create_project failed")
-        raise HTTPException(status_code=500, detail=str(e)) from e
+        raise HTTPException(status_code=500, detail="Failed to create project") from e
 
 
 @router.patch("/{id}", response_model=schemas.ProjectRead)
@@ -58,7 +58,7 @@ def update_project(id: int, data: schemas.ProjectUpdate, db: Session = Depends(g
         raise
     except Exception as e:
         logger.exception("update_project failed")
-        raise HTTPException(status_code=500, detail=str(e)) from e
+        raise HTTPException(status_code=500, detail="Failed to update project") from e
 
 
 @router.delete("/{id}", status_code=204)

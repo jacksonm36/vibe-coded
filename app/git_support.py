@@ -2,9 +2,11 @@
 import logging
 import os
 import re
+import shutil
 import stat
 import subprocess
 import tempfile
+import urllib.parse
 from pathlib import Path
 from typing import Optional
 
@@ -99,8 +101,9 @@ def clone_or_pull(
 ) -> Path:
     """
     Clone the repo if not present, else pull. Return path to repo root.
-    For SSH URL uses GIT_SSH_COMMAND with ssh -i <keyfile>.
-    For HTTPS URL injects token as https://<token>@host/path.
+    For SSH URLs uses GIT_SSH_COMMAND with ssh -i <keyfile>.
+    For HTTPS URLs uses a temporary git-credentials store so the token is
+    never exposed in command-line arguments (process list / logs).
     """
     raw = git_url.strip()
     if not raw:
@@ -111,6 +114,7 @@ def clone_or_pull(
 
     env = os.environ.copy()
     key_file = None
+    creds_file = None
     if _is_ssh_url(url) and ssh_private_key:
         with tempfile.NamedTemporaryFile(mode="w", suffix=".key", delete=False) as f:
             f.write(ssh_private_key.strip())
@@ -121,13 +125,23 @@ def clone_or_pull(
         os.chmod(key_file, stat.S_IRUSR | stat.S_IWUSR)
         env["GIT_SSH_COMMAND"] = f'ssh -i "{key_file}" -o StrictHostKeyChecking=accept-new'
     elif not _is_ssh_url(url) and https_token:
-        # Inject token: https://x-access-token:TOKEN@host/path
-        # The token is passed via the URL; git may include it in error messages.
-        if "://" in url:
-            scheme, rest = url.split("://", 1)
-            url = f"{scheme}://x-access-token:{https_token}@{rest}"
-        else:
-            url = f"https://x-access-token:{https_token}@{url}"
+        # Use a temporary git-credentials store file so the token is not visible
+        # in the process argument list or git error messages.
+        parsed = urllib.parse.urlparse(url)
+        cred_entry = f"{parsed.scheme}://x-access-token:{https_token}@{parsed.netloc}\n"
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".git-credentials", delete=False) as f:
+            f.write(cred_entry)
+            creds_file = f.name
+        os.chmod(creds_file, stat.S_IRUSR | stat.S_IWUSR)
+        # Point git at our temporary credentials store; disable any system helper first,
+        # then activate the store so system/user credential helpers are not used.
+        env["GIT_CONFIG_COUNT"] = "2"
+        env["GIT_CONFIG_KEY_0"] = "credential.helper"
+        env["GIT_CONFIG_VALUE_0"] = ""  # Clear any pre-configured system/user helpers
+        env["GIT_CONFIG_KEY_1"] = "credential.helper"
+        env["GIT_CONFIG_VALUE_1"] = f"store --file={creds_file}"
+        # Disable interactive prompts so failures surface immediately.
+        env["GIT_TERMINAL_PROMPT"] = "0"
 
     try:
         if repo_path.exists() and (repo_path / ".git").exists():
@@ -156,7 +170,6 @@ def clone_or_pull(
             )
         else:
             if repo_path.exists():
-                import shutil
                 shutil.rmtree(repo_path)
             subprocess.run(
                 ["git", "clone", "--branch", branch, "--single-branch", "--depth", "50", url, str(repo_path)],
@@ -167,11 +180,12 @@ def clone_or_pull(
             )
         return repo_path
     finally:
-        if key_file and os.path.exists(key_file):
-            try:
-                os.unlink(key_file)
-            except OSError:
-                pass
+        for f in (key_file, creds_file):
+            if f and os.path.exists(f):
+                try:
+                    os.unlink(f)
+                except OSError:
+                    pass
 
 
 # Lowercase suffixes for case-insensitive walk (single extension only; *.tf.json handled by glob)
