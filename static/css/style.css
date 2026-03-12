@@ -278,6 +278,130 @@ input:focus, textarea:focus {
   color: var(--rh-red);
 }
 
+/* Schedule builder (calendar-style) */
+.schedule-builder {
+  margin-top: 1rem;
+  border-color: var(--border);
+}
+.schedule-builder-header {
+  padding: 0.75rem 1rem;
+  border-bottom: 1px solid var(--border);
+}
+.schedule-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  cursor: pointer;
+  font-weight: 500;
+  margin: 0;
+}
+.schedule-toggle input {
+  width: auto;
+  max-width: none;
+}
+.schedule-builder-body {
+  padding: 1rem;
+  transition: opacity 0.2s;
+}
+.schedule-time-row {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin-bottom: 1rem;
+}
+.schedule-time-row label {
+  margin: 0;
+  min-width: 3rem;
+  font-size: 0.9rem;
+  color: var(--text-muted);
+}
+.schedule-time-row select {
+  width: auto;
+  max-width: none;
+  min-width: 4rem;
+}
+.schedule-time-sep {
+  color: var(--text-muted);
+  font-weight: 600;
+}
+.schedule-days-wrap {
+  margin-bottom: 1rem;
+}
+.schedule-days-wrap > label {
+  display: block;
+  margin-bottom: 0.35rem;
+  font-size: 0.9rem;
+  color: var(--text-muted);
+}
+.schedule-days,
+.schedule-month-days {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+}
+.schedule-day {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  padding: 0.35rem 0.5rem;
+  background: var(--bg-input);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 0.85rem;
+  margin: 0;
+  user-select: none;
+}
+.schedule-day:hover {
+  border-color: var(--rh-red);
+  background: rgba(238,0,0,0.06);
+}
+.schedule-day input {
+  width: auto;
+  max-width: none;
+  margin: 0;
+}
+.schedule-day:has(input:checked) {
+  border-color: var(--rh-red);
+  background: rgba(238,0,0,0.1);
+  color: var(--rh-red);
+}
+.schedule-month-days .schedule-day {
+  min-width: 2.25rem;
+  justify-content: center;
+}
+.schedule-tz-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem;
+}
+.schedule-tz-row select {
+  width: auto;
+  max-width: 14rem;
+}
+.schedule-tz-other {
+  width: auto !important;
+  max-width: 12rem !important;
+}
+.schedule-summary {
+  margin-top: 0.75rem;
+  padding: 0.5rem 0.75rem;
+  background: var(--bg-input);
+  border-radius: 4px;
+  font-size: 0.9rem;
+  color: var(--text-muted);
+}
+.schedule-next-run {
+  margin-top: 0.75rem;
+}
+.schedule-next-run label {
+  display: block;
+  margin-bottom: 0.25rem;
+  font-size: 0.85rem;
+  color: var(--text-muted);
+}
+
 /* Modal overlay */
 .overlay {
   position: fixed;

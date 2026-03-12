@@ -324,6 +324,48 @@ function escapeHtml(s) {
   return div.innerHTML;
 }
 
+// Schedule builder: friendly object <-> cron (backend)
+// cron = "minute hour day month dow" (dow: 0=Sun, 1=Mon, ..., 6=Sat)
+function scheduleToCron(s) {
+  if (!s || !s.enabled) return null;
+  const min = Number(s.minute) || 0;
+  const hour = Number(s.hour) ?? 2;
+  const tz = (s.tz || 'UTC').trim() || 'UTC';
+  if (s.repeat === 'daily') return `${min} ${hour} * * *`;
+  if (s.repeat === 'weekly' && s.weekDays && s.weekDays.length) {
+    const dow = s.weekDays.map(d => d === 7 ? 0 : d).sort((a, b) => a - b).join(',');
+    return `${min} ${hour} * * ${dow}`;
+  }
+  if (s.repeat === 'monthly' && s.monthDays && s.monthDays.length) {
+    const dom = s.monthDays.sort((a, b) => a - b).join(',');
+    return `${min} ${hour} ${dom} * *`;
+  }
+  return null;
+}
+
+function cronToSchedule(cronStr, tz) {
+  const def = { enabled: false, hour: 2, minute: 0, repeat: 'daily', weekDays: [], monthDays: [], tz: tz || 'UTC' };
+  if (!cronStr || !cronStr.trim()) return def;
+  const parts = cronStr.trim().split(/\s+/);
+  if (parts.length < 5) return def;
+  const [min, hour, dom, month, dow] = parts;
+  def.enabled = true;
+  def.minute = parseInt(min, 10) || 0;
+  def.hour = parseInt(hour, 10) ?? 2;
+  if (dom === '*' && dow === '*') {
+    def.repeat = 'daily';
+  } else if (dom === '*' && dow !== '*') {
+    def.repeat = 'weekly';
+    def.weekDays = dow.split(',').map(s => parseInt(s.trim(), 10)).filter(n => !isNaN(n) && n >= 0 && n <= 6);
+  } else if (dom !== '*' && dow === '*') {
+    def.repeat = 'monthly';
+    def.monthDays = dom.split(',').map(s => parseInt(s.trim(), 10)).filter(n => !isNaN(n) && n >= 1 && n <= 31);
+  }
+  if (def.repeat === 'weekly') def.weekDays = def.weekDays.map(n => n === 0 ? 7 : n);
+  def.tz = tz || def.tz;
+  return def;
+}
+
 function showModal(title, body, footer = '') {
   const overlay = qs('#modal-overlay');
   const modal = qs('#modal');
@@ -505,21 +547,54 @@ function openTemplateModal(id) {
         <label>Extra vars (YAML/JSON)</label>
         <textarea id="modal-extra">${jt ? escapeHtml(jt.extra_vars || '') : ''}</textarea>
       </div>
-      <div class="form-group">
-        <label><input type="checkbox" id="modal-schedule-enabled" ${jt && jt.schedule_enabled ? 'checked' : ''}> Run on schedule (cron)</label>
-      </div>
-      <div class="form-group" id="modal-schedule-fields">
-        <label>Cron (min hour day month dow)</label>
-        <input type="text" id="modal-schedule-cron" value="${jt && jt.schedule_cron ? escapeHtml(jt.schedule_cron) : ''}" placeholder="0 2 * * *">
-        <small class="text-muted">0 2 * * * = daily 2:00 · 0 */6 * * * = every 6h · 0 3 * * 1 = Mon 3:00</small>
-      </div>
-      <div class="form-group" id="modal-schedule-tz-wrap">
-        <label>Timezone</label>
-        <input type="text" id="modal-schedule-tz" value="${jt && jt.schedule_tz ? escapeHtml(jt.schedule_tz) : 'UTC'}" placeholder="UTC">
-      </div>
-      <div class="form-group" id="modal-next-run-wrap" style="display:none">
-        <label>Next run</label>
-        <p id="modal-next-run" class="text-muted">—</p>
+      <div class="schedule-builder card">
+        <div class="schedule-builder-header">
+          <label class="schedule-toggle"><input type="checkbox" id="modal-schedule-enabled" ${jt && jt.schedule_enabled ? 'checked' : ''}> Run on schedule</label>
+        </div>
+        <div class="schedule-builder-body" id="modal-schedule-body">
+          <div class="schedule-time-row">
+            <label>Time</label>
+            <select id="modal-schedule-hour">${Array.from({ length: 24 }, (_, i) => `<option value="${i}">${String(i).padStart(2, '0')}:00</option>`).join('')}</select>
+            <span class="schedule-time-sep">:</span>
+            <select id="modal-schedule-minute">${[0, 15, 30, 45].map(m => `<option value="${m}">${String(m).padStart(2, '0')}</option>`).join('')}</select>
+          </div>
+          <div class="form-group">
+            <label>Repeat</label>
+            <select id="modal-schedule-repeat">
+              <option value="daily">Every day</option>
+              <option value="weekly">Every week (pick days)</option>
+              <option value="monthly">Every month (pick days)</option>
+            </select>
+          </div>
+          <div class="schedule-days-wrap" id="modal-schedule-week-wrap">
+            <label>Days of week</label>
+            <div class="schedule-days" id="modal-schedule-week-days" role="group">
+              ${['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'].map((d, i) => `<label class="schedule-day"><input type="checkbox" data-dow="${i + 1}" value="${i + 1}">${d}</label>`).join('')}
+            </div>
+          </div>
+          <div class="schedule-days-wrap" id="modal-schedule-month-wrap" style="display:none">
+            <label>Days of month</label>
+            <div class="schedule-month-days" id="modal-schedule-month-days" role="group">
+              ${Array.from({ length: 31 }, (_, i) => i + 1).map(d => `<label class="schedule-day"><input type="checkbox" data-dom="${d}" value="${d}">${d}</label>`).join('')}
+            </div>
+          </div>
+          <div class="form-group schedule-tz-row">
+            <label>Timezone</label>
+            <select id="modal-schedule-tz">
+              <option value="UTC">UTC</option>
+              <option value="Europe/London">Europe/London</option>
+              <option value="Europe/Paris">Europe/Paris</option>
+              <option value="Europe/Budapest">Europe/Budapest</option>
+              <option value="America/New_York">America/New_York</option>
+              <option value="America/Los_Angeles">America/Los_Angeles</option>
+              <option value="Asia/Tokyo">Asia/Tokyo</option>
+              <option value="__other__">Other</option>
+            </select>
+            <input type="text" id="modal-schedule-tz-other" class="schedule-tz-other" placeholder="e.g. Pacific/Auckland" style="display:none">
+          </div>
+          <div class="schedule-summary" id="modal-schedule-summary"></div>
+          <div class="schedule-next-run" id="modal-next-run-wrap"><label>Next run</label><p id="modal-next-run" class="text-muted">—</p></div>
+        </div>
       </div>
     `,
     `<button class="btn btn-secondary" data-action="close-modal">Cancel</button>
@@ -527,18 +602,84 @@ function openTemplateModal(id) {
   );
   if (!jt && projects[0]) qs('#modal-tpl-project').value = projects[0].id;
   const scheduleEnabled = qs('#modal-schedule-enabled');
-  const nextRunWrap = qs('#modal-next-run-wrap');
+  const scheduleBody = qs('#modal-schedule-body');
+  const repeatSelect = qs('#modal-schedule-repeat');
+  const weekWrap = qs('#modal-schedule-week-wrap');
+  const monthWrap = qs('#modal-schedule-month-wrap');
+  const weekDaysEl = qs('#modal-schedule-week-days');
+  const monthDaysEl = qs('#modal-schedule-month-days');
+  const summaryEl = qs('#modal-schedule-summary');
   const nextRunEl = qs('#modal-next-run');
-  function toggleScheduleFields() {
+  const tzSelect = qs('#modal-schedule-tz');
+  const tzOther = qs('#modal-schedule-tz-other');
+
+  const s0 = cronToSchedule(jt && jt.schedule_enabled ? jt.schedule_cron : null, jt && jt.schedule_tz ? jt.schedule_tz : 'UTC');
+  scheduleBody.style.opacity = s0.enabled ? '1' : '0.6';
+  qs('#modal-schedule-hour').value = s0.hour;
+  qs('#modal-schedule-minute').value = s0.minute;
+  repeatSelect.value = s0.repeat;
+  weekDaysEl.querySelectorAll('input').forEach(cb => { cb.checked = s0.weekDays.includes(parseInt(cb.value, 10)); });
+  monthDaysEl.querySelectorAll('input').forEach(cb => { cb.checked = s0.monthDays.includes(parseInt(cb.value, 10)); });
+  if (['UTC', 'Europe/London', 'Europe/Paris', 'Europe/Budapest', 'America/New_York', 'America/Los_Angeles', 'Asia/Tokyo'].includes(s0.tz)) {
+    tzSelect.value = s0.tz;
+    tzOther.style.display = 'none';
+  } else {
+    tzSelect.value = '__other__';
+    tzOther.value = s0.tz;
+    tzOther.style.display = 'inline-block';
+  }
+
+  function getScheduleFromForm() {
+    const tzVal = tzSelect.value === '__other__' ? tzOther.value.trim() || 'UTC' : tzSelect.value;
+    const weekDays = Array.from(weekDaysEl.querySelectorAll('input:checked')).map(cb => parseInt(cb.value, 10));
+    const monthDays = Array.from(monthDaysEl.querySelectorAll('input:checked')).map(cb => parseInt(cb.value, 10));
+    return {
+      enabled: scheduleEnabled.checked,
+      hour: parseInt(qs('#modal-schedule-hour').value, 10),
+      minute: parseInt(qs('#modal-schedule-minute').value, 10),
+      repeat: repeatSelect.value,
+      weekDays: repeatSelect.value === 'weekly' ? weekDays : [],
+      monthDays: repeatSelect.value === 'monthly' ? monthDays : [],
+      tz: tzVal,
+    };
+  }
+
+  function updateSummary() {
+    const s = getScheduleFromForm();
+    if (!s.enabled) { summaryEl.textContent = ''; return; }
+    const timeStr = `${String(s.hour).padStart(2, '0')}:${String(s.minute).padStart(2, '0')}`;
+    if (s.repeat === 'daily') summaryEl.textContent = `Runs every day at ${timeStr} ${s.tz}`;
+    else if (s.repeat === 'weekly' && s.weekDays.length) {
+      const dayNames = ['', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+      const names = s.weekDays.sort((a,b)=>a-b).map(d => dayNames[d]).filter(Boolean).join(', ');
+      summaryEl.textContent = `Runs every ${names} at ${timeStr} ${s.tz}`;
+    } else if (s.repeat === 'monthly' && s.monthDays.length) {
+      const days = s.monthDays.sort((a,b)=>a-b).join(', ');
+      summaryEl.textContent = `Runs on day(s) ${days} at ${timeStr} ${s.tz}`;
+    } else summaryEl.textContent = 'Pick days above';
+  }
+
+  function toggleScheduleUI() {
     const on = scheduleEnabled.checked;
-    qs('#modal-schedule-fields').style.display = on ? 'block' : 'none';
-    qs('#modal-schedule-tz-wrap').style.display = on ? 'block' : 'none';
-    nextRunWrap.style.display = on ? 'block' : 'none';
+    scheduleBody.style.opacity = on ? '1' : '0.6';
+    scheduleBody.style.pointerEvents = on ? 'auto' : 'none';
+    weekWrap.style.display = repeatSelect.value === 'weekly' ? 'block' : 'none';
+    monthWrap.style.display = repeatSelect.value === 'monthly' ? 'block' : 'none';
+    updateSummary();
     if (on && id) fetchJSON(`${API}/job_templates/${id}/next_run`).then(r => { nextRunEl.textContent = r.next_run ? new Date(r.next_run).toLocaleString() : '—'; }).catch(() => {});
     else if (on) nextRunEl.textContent = 'Save to see next run';
+    else nextRunEl.textContent = '—';
   }
-  scheduleEnabled.onchange = toggleScheduleFields;
-  toggleScheduleFields();
+
+  scheduleEnabled.onchange = toggleScheduleUI;
+  repeatSelect.onchange = () => { weekWrap.style.display = repeatSelect.value === 'weekly' ? 'block' : 'none'; monthWrap.style.display = repeatSelect.value === 'monthly' ? 'block' : 'none'; updateSummary(); };
+  qs('#modal-schedule-hour').onchange = updateSummary;
+  qs('#modal-schedule-minute').onchange = updateSummary;
+  weekDaysEl.querySelectorAll('input').forEach(cb => { cb.onchange = updateSummary; });
+  monthDaysEl.querySelectorAll('input').forEach(cb => { cb.onchange = updateSummary; });
+  tzSelect.onchange = () => { tzOther.style.display = tzSelect.value === '__other__' ? 'inline-block' : 'none'; updateSummary(); };
+  toggleScheduleUI();
+
   qs('#modal-save-tpl').onclick = async () => {
     const name = qs('#modal-name').value.trim();
     const playbook_path = qs('#modal-playbook').value.trim();
@@ -548,10 +689,12 @@ function openTemplateModal(id) {
     const inventory_id = invVal ? parseInt(invVal, 10) : null;
     const credential_id = credVal ? parseInt(credVal, 10) : null;
     const extra_vars = qs('#modal-extra').value;
-    const schedule_enabled = scheduleEnabled.checked;
-    const schedule_cron = schedule_enabled ? qs('#modal-schedule-cron').value.trim() || null : null;
-    const schedule_tz = schedule_enabled ? (qs('#modal-schedule-tz').value.trim() || 'UTC') : null;
+    const s = getScheduleFromForm();
+    const schedule_enabled = s.enabled;
+    const schedule_cron = schedule_enabled ? scheduleToCron(s) : null;
+    const schedule_tz = schedule_enabled ? s.tz : null;
     if (!name || !playbook_path || !project_id) return;
+    if (schedule_enabled && !schedule_cron) { alert('Pick at least one day for weekly/monthly schedule.'); return; }
     try {
       const body = { name, playbook_path, inventory_id, credential_id, extra_vars, schedule_enabled, schedule_cron, schedule_tz };
       if (id) await fetchJSON(`${API}/job_templates/${id}`, { method: 'PATCH', body: JSON.stringify(body) });

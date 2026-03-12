@@ -57,14 +57,17 @@ def _validate_branch(branch: str) -> str:
     """
     if not branch or not _BRANCH_RE.match(branch):
         raise ValueError(
-            f"Invalid branch name {branch!r}. Only alphanumeric characters, "
+            "Invalid branch name. Only alphanumeric characters, "
             "hyphens, underscores, dots, and slashes are allowed."
         )
-    # Prevent names that start with '-' (would be interpreted as git options)
-    # or '..' (path traversal in refspecs).
     if branch.startswith('-') or branch.startswith('..') or '..' in branch:
-        raise ValueError(f"Invalid branch name {branch!r}.")
+        raise ValueError("Invalid branch name.")
     return branch
+
+
+def validate_branch(branch: str) -> str:
+    """Public validation for branch/tag names. Raises ValueError if invalid."""
+    return _validate_branch((branch or "").strip() or "main")
 
 
 def _is_ssh_url(url: str) -> bool:
@@ -109,7 +112,7 @@ def clone_or_pull(
     if not raw:
         raise ValueError("git_url is required")
     url = normalize_git_url(raw)
-    branch = _validate_branch((branch or "main").strip())
+    branch = validate_branch(branch or "main")
     repo_path = _workspace_path(project_id)
 
     env = os.environ.copy()

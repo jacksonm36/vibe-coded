@@ -144,10 +144,14 @@ def update_credential(db: Session, id: int, data: schemas.CredentialUpdate) -> O
 
 
 def get_credential_secret(db: Session, id: int) -> Optional[str]:
+    """Return decrypted secret, or None if missing/invalid. Never raises on tampered data."""
     c = get_credential(db, id)
     if not c or not c.secret_encrypted:
         return None
-    return sec.decrypt_secret(c.secret_encrypted)
+    try:
+        return sec.decrypt_secret(c.secret_encrypted)
+    except Exception:
+        return None
 
 
 def delete_credential(db: Session, id: int) -> bool:

@@ -39,6 +39,11 @@ def get_project(id: int, db: Session = Depends(get_db)):
 
 @router.post("", response_model=schemas.ProjectRead)
 def create_project(data: schemas.ProjectCreate, db: Session = Depends(get_db)):
+    if data.git_branch:
+        try:
+            git_support.validate_branch(data.git_branch)
+        except ValueError as e:
+            raise HTTPException(status_code=400, detail=str(e)) from e
     try:
         p = crud.create_project(db, data)
         return _project_to_read(p)
@@ -49,6 +54,11 @@ def create_project(data: schemas.ProjectCreate, db: Session = Depends(get_db)):
 
 @router.patch("/{id}", response_model=schemas.ProjectRead)
 def update_project(id: int, data: schemas.ProjectUpdate, db: Session = Depends(get_db)):
+    if getattr(data, "git_branch", None) not in (None, ""):
+        try:
+            git_support.validate_branch(data.git_branch or "main")
+        except ValueError as e:
+            raise HTTPException(status_code=400, detail=str(e)) from e
     try:
         p = crud.update_project(db, id, data)
         if not p:
@@ -101,6 +111,8 @@ def pull_project(id: int, db: Session = Depends(get_db)):
         )
         playbooks = git_support.list_playbooks_in_repo(repo_path)
         return {"ok": True, "message": "Pulled successfully.", "playbooks": playbooks}
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e)) from e
     except Exception as e:
-        logger.exception("pull_project failed")
-        raise HTTPException(status_code=400, detail=f"Pull failed: {e}") from e
+        logger.exception("pull_project failed: %s", e)
+        raise HTTPException(status_code=400, detail="Pull failed.") from e

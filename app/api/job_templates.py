@@ -11,6 +11,18 @@ from app import crud, schemas
 router = APIRouter(prefix="/api/job_templates", tags=["job_templates"])
 
 
+def _validate_schedule_cron(cron: str | None) -> None:
+    """Validate cron format (5 fields, reasonable length). Raises ValueError if invalid."""
+    if not cron or not cron.strip():
+        return
+    s = cron.strip()
+    if len(s) > 128:
+        raise ValueError("Schedule cron expression is too long.")
+    parts = s.split()
+    if len(parts) != 5:
+        raise ValueError("Schedule must have 5 fields: minute hour day month day-of-week.")
+
+
 def _next_run_iso(jt) -> str | None:
     if not jt.schedule_enabled or not (jt.schedule_cron or "").strip():
         return None
@@ -62,11 +74,21 @@ def create_job_template(data: schemas.JobTemplateCreate, db: Session = Depends(g
         raise HTTPException(status_code=404, detail="Inventory not found")
     if data.credential_id and not crud.get_credential(db, data.credential_id):
         raise HTTPException(status_code=404, detail="Credential not found")
+    if getattr(data, "schedule_enabled", False) and getattr(data, "schedule_cron", None):
+        try:
+            _validate_schedule_cron(data.schedule_cron)
+        except ValueError as e:
+            raise HTTPException(status_code=400, detail=str(e)) from e
     return crud.create_job_template(db, data)
 
 
 @router.patch("/{id}", response_model=schemas.JobTemplateRead)
 def update_job_template(id: int, data: schemas.JobTemplateUpdate, db: Session = Depends(get_db)):
+    if getattr(data, "schedule_enabled", False) and getattr(data, "schedule_cron", None):
+        try:
+            _validate_schedule_cron(data.schedule_cron)
+        except ValueError as e:
+            raise HTTPException(status_code=400, detail=str(e)) from e
     jt = crud.update_job_template(db, id, data)
     if not jt:
         raise HTTPException(status_code=404, detail="Job template not found")
