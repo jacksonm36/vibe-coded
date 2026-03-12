@@ -9,3 +9,6 @@ PyYAML>=6.0
 
 # Ansible - installs natively on Windows, Linux, macOS (ansible-playbook for playbook jobs)
 ansible>=8.0.0
+
+# Scheduler for cron-based job runs
+croniter>=2.0.0

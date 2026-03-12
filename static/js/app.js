@@ -34,6 +34,7 @@ let jobs = [];
 
 const REFRESH_INTERVAL_MS = 4000;
 let refreshIntervalId = null;
+let jobPollIntervalId = null;
 
 function clearRefresh() {
   if (refreshIntervalId) {
@@ -88,7 +89,18 @@ function bindContentEvents() {
   });
 }
 
+// Delegate clicks so modal buttons (e.g. Close) work when added dynamically
+document.addEventListener('click', (e) => {
+  const el = e.target.closest('[data-action]');
+  if (!el || el.closest('#content')) return; // #content uses bindContentEvents
+  e.preventDefault();
+  const action = el.dataset.action;
+  const id = el.dataset.id ? parseInt(el.dataset.id, 10) : null;
+  runAction(action, id, el);
+});
+
 function runAction(action, id, el) {
+  if (action === 'close-modal') { closeModal(); reloadAndRender(); return; }
   if (action === 'create-project') openProjectModal();
   if (action === 'edit-project') openProjectModal(id);
   if (action === 'delete-project') deleteProject(id);
@@ -253,9 +265,10 @@ function renderTemplates() {
           <tbody>
             ${jobTemplates.length ? jobTemplates.map(jt => {
               const proj = projects.find(p => p.id === jt.project_id);
+              const sched = jt.schedule_enabled && jt.schedule_cron ? `<span class="badge badge-running" title="${escapeHtml(jt.schedule_cron)}">Schedule</span>` : '';
               return `
               <tr>
-                <td>${escapeHtml(jt.name)}</td>
+                <td>${escapeHtml(jt.name)} ${sched}</td>
                 <td>${escapeHtml(jt.playbook_path)}</td>
                 <td>${proj ? escapeHtml(proj.name) : jt.project_id}</td>
                 <td>
@@ -319,6 +332,10 @@ function showModal(title, body, footer = '') {
 }
 
 function closeModal() {
+  if (jobPollIntervalId) {
+    clearInterval(jobPollIntervalId);
+    jobPollIntervalId = null;
+  }
   qs('#modal-overlay').classList.add('hidden');
 }
 
@@ -488,11 +505,40 @@ function openTemplateModal(id) {
         <label>Extra vars (YAML/JSON)</label>
         <textarea id="modal-extra">${jt ? escapeHtml(jt.extra_vars || '') : ''}</textarea>
       </div>
+      <div class="form-group">
+        <label><input type="checkbox" id="modal-schedule-enabled" ${jt && jt.schedule_enabled ? 'checked' : ''}> Run on schedule (cron)</label>
+      </div>
+      <div class="form-group" id="modal-schedule-fields">
+        <label>Cron (min hour day month dow)</label>
+        <input type="text" id="modal-schedule-cron" value="${jt && jt.schedule_cron ? escapeHtml(jt.schedule_cron) : ''}" placeholder="0 2 * * *">
+        <small class="text-muted">0 2 * * * = daily 2:00 · 0 */6 * * * = every 6h · 0 3 * * 1 = Mon 3:00</small>
+      </div>
+      <div class="form-group" id="modal-schedule-tz-wrap">
+        <label>Timezone</label>
+        <input type="text" id="modal-schedule-tz" value="${jt && jt.schedule_tz ? escapeHtml(jt.schedule_tz) : 'UTC'}" placeholder="UTC">
+      </div>
+      <div class="form-group" id="modal-next-run-wrap" style="display:none">
+        <label>Next run</label>
+        <p id="modal-next-run" class="text-muted">—</p>
+      </div>
     `,
-    `<button class="btn btn-secondary" onclick="closeModal()">Cancel</button>
+    `<button class="btn btn-secondary" data-action="close-modal">Cancel</button>
      <button class="btn btn-primary" id="modal-save-tpl" data-id="${id || ''}">Save</button>`
   );
   if (!jt && projects[0]) qs('#modal-tpl-project').value = projects[0].id;
+  const scheduleEnabled = qs('#modal-schedule-enabled');
+  const nextRunWrap = qs('#modal-next-run-wrap');
+  const nextRunEl = qs('#modal-next-run');
+  function toggleScheduleFields() {
+    const on = scheduleEnabled.checked;
+    qs('#modal-schedule-fields').style.display = on ? 'block' : 'none';
+    qs('#modal-schedule-tz-wrap').style.display = on ? 'block' : 'none';
+    nextRunWrap.style.display = on ? 'block' : 'none';
+    if (on && id) fetchJSON(`${API}/job_templates/${id}/next_run`).then(r => { nextRunEl.textContent = r.next_run ? new Date(r.next_run).toLocaleString() : '—'; }).catch(() => {});
+    else if (on) nextRunEl.textContent = 'Save to see next run';
+  }
+  scheduleEnabled.onchange = toggleScheduleFields;
+  toggleScheduleFields();
   qs('#modal-save-tpl').onclick = async () => {
     const name = qs('#modal-name').value.trim();
     const playbook_path = qs('#modal-playbook').value.trim();
@@ -502,10 +548,14 @@ function openTemplateModal(id) {
     const inventory_id = invVal ? parseInt(invVal, 10) : null;
     const credential_id = credVal ? parseInt(credVal, 10) : null;
     const extra_vars = qs('#modal-extra').value;
+    const schedule_enabled = scheduleEnabled.checked;
+    const schedule_cron = schedule_enabled ? qs('#modal-schedule-cron').value.trim() || null : null;
+    const schedule_tz = schedule_enabled ? (qs('#modal-schedule-tz').value.trim() || 'UTC') : null;
     if (!name || !playbook_path || !project_id) return;
     try {
-      if (id) await fetchJSON(`${API}/job_templates/${id}`, { method: 'PATCH', body: JSON.stringify({ name, playbook_path, inventory_id, credential_id, extra_vars }) });
-      else await fetchJSON(`${API}/job_templates`, { method: 'POST', body: JSON.stringify({ project_id, name, playbook_path, inventory_id, credential_id, extra_vars }) });
+      const body = { name, playbook_path, inventory_id, credential_id, extra_vars, schedule_enabled, schedule_cron, schedule_tz };
+      if (id) await fetchJSON(`${API}/job_templates/${id}`, { method: 'PATCH', body: JSON.stringify(body) });
+      else await fetchJSON(`${API}/job_templates`, { method: 'POST', body: JSON.stringify({ project_id, ...body }) });
       closeModal();
       reloadAndRender();
     } catch (e) { showError(e); }
@@ -565,8 +615,8 @@ async function pullProject(id) {
 async function launchJob(templateId) {
   try {
     const job = await fetchJSON(`${API}/jobs/launch`, { method: 'POST', body: JSON.stringify({ job_template_id: templateId, extra_vars_override: '' }) });
-    await reloadAndRender();
     viewJob(job.id);
+    reloadAndRender();
   } catch (e) { showError(e); }
 }
 
@@ -586,22 +636,52 @@ async function deleteJobHistory() {
     await reloadAndRender();
   } catch (e) { showError(e); }
 }
+function jobModalBody(job) {
+  return `
+    <p><strong>Playbook:</strong> ${escapeHtml(job.playbook_path)}</p>
+    <p><strong>Status:</strong> <span class="badge badge-${job.status}">${job.status}</span></p>
+    <p><strong>Started:</strong> ${job.started_at ? new Date(job.started_at).toLocaleString() : '—'}</p>
+    <p><strong>Finished:</strong> ${job.finished_at ? new Date(job.finished_at).toLocaleString() : '—'}</p>
+    <div class="form-group">
+      <label>Output</label>
+      <pre class="log-output">${escapeHtml(job.output_log || '(no output yet)')}</pre>
+    </div>
+  `;
+}
+
 function viewJob(id) {
+  if (jobPollIntervalId) {
+    clearInterval(jobPollIntervalId);
+    jobPollIntervalId = null;
+  }
   fetchJSON(`${API}/jobs/${id}`).then(job => {
-    showModal(
-      `Job #${job.id} — ${job.status}`,
-      `
-        <p><strong>Playbook:</strong> ${escapeHtml(job.playbook_path)}</p>
-        <p><strong>Status:</strong> <span class="badge badge-${job.status}">${job.status}</span></p>
-        <p><strong>Started:</strong> ${job.started_at ? new Date(job.started_at).toLocaleString() : '—'}</p>
-        <p><strong>Finished:</strong> ${job.finished_at ? new Date(job.finished_at).toLocaleString() : '—'}</p>
-        <div class="form-group">
-          <label>Output</label>
-          <pre class="log-output">${escapeHtml(job.output_log || '(no output yet)')}</pre>
-        </div>
-      `,
-      `<button class="btn btn-primary" onclick="closeModal(); reloadAndRender();">Close</button>`
-    );
+    const modal = qs('#modal');
+    modal.innerHTML = `
+      <div class="modal-header">Job #${job.id} — ${job.status}</div>
+      <div class="modal-body" id="job-modal-body">${jobModalBody(job)}</div>
+      <div class="modal-footer"><button class="btn btn-primary" data-action="close-modal">Close</button></div>
+    `;
+    qs('#modal-overlay').classList.remove('hidden');
+
+    const poll = () => {
+      fetchJSON(`${API}/jobs/${id}`).then(j => {
+        const header = modal.querySelector('.modal-header');
+        const body = modal.querySelector('#job-modal-body');
+        if (header) header.textContent = `Job #${j.id} — ${j.status}`;
+        if (body) body.innerHTML = jobModalBody(j);
+        if (j.status === 'success' || j.status === 'failed') {
+          if (jobPollIntervalId) {
+            clearInterval(jobPollIntervalId);
+            jobPollIntervalId = null;
+          }
+          reloadAndRender();
+        }
+      }).catch(() => {});
+    };
+
+    if (job.status === 'pending' || job.status === 'running') {
+      jobPollIntervalId = setInterval(poll, 1500);
+    }
   }).catch(e => showError(e));
 }
 

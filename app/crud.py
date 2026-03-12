@@ -168,6 +168,19 @@ def get_job_templates_by_project(db: Session, project_id: int) -> Sequence[model
     return db.query(models.JobTemplate).filter(models.JobTemplate.project_id == project_id).order_by(models.JobTemplate.name).all()
 
 
+def get_scheduled_job_templates(db: Session) -> Sequence[models.JobTemplate]:
+    """Templates with schedule enabled and valid cron."""
+    return (
+        db.query(models.JobTemplate)
+        .filter(
+            models.JobTemplate.schedule_enabled == True,
+            models.JobTemplate.schedule_cron.isnot(None),
+            models.JobTemplate.schedule_cron != "",
+        )
+        .all()
+    )
+
+
 def create_job_template(db: Session, data: schemas.JobTemplateCreate) -> models.JobTemplate:
     jt = models.JobTemplate(
         project_id=data.project_id,
@@ -177,6 +190,9 @@ def create_job_template(db: Session, data: schemas.JobTemplateCreate) -> models.
         inventory_id=data.inventory_id,
         credential_id=data.credential_id,
         extra_vars=data.extra_vars or "",
+        schedule_enabled=data.schedule_enabled,
+        schedule_cron=data.schedule_cron,
+        schedule_tz=data.schedule_tz or "UTC",
     )
     db.add(jt)
     db.commit()

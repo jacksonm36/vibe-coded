@@ -121,18 +121,91 @@ def launch_job(data: schemas.JobLaunch, background_tasks: BackgroundTasks, db: S
         status="pending",
     )
 
-    # Run synchronously for now so status/output always update reliably.
-    # This avoids issues with background task execution on some platforms.
-    runners.run_playbook(
-        db,
-        job_id=job.id,
-        playbook_path=playbook_path,
-        inventory_content=inv_content,
-        extra_vars=extra,
-        credential_ssh_key=ssh_key,
-        credential_ssh_password=ssh_password,
-        credential_vault_password=vault_pass,
-    )
+    def run():
+        from app.database import SessionLocal
+        db2 = SessionLocal()
+        try:
+            jt2 = crud.get_job_template(db2, jt.id)
+            if not jt2:
+                return
+            inv_content2, extra2 = inv_content, extra
+            try:
+                playbook_path2, inv_content2, extra2, ssh_key2, ssh_password2, vault_pass2 = _resolve_playbook_path_and_credentials(
+                    db2, jt2, inv_content2, extra2
+                )
+            except Exception as e:
+                crud.update_job_status(db2, job.id, "failed", f"Setup failed: {e}")
+                return
+            runners.run_playbook(
+                db2,
+                job_id=job.id,
+                playbook_path=playbook_path2,
+                inventory_content=inv_content2,
+                extra_vars=extra2,
+                credential_ssh_key=ssh_key2,
+                credential_ssh_password=ssh_password2,
+                credential_vault_password=vault_pass2,
+            )
+        finally:
+            db2.close()
 
-    # Re-fetch the job so we return final status/output, not just the initial pending row.
+    background_tasks.add_task(run)
     return crud.get_job(db, job.id)
+
+
+def launch_job_template_by_id(job_template_id: int) -> None:
+    """Launch a job from a template (used by scheduler). Creates job row and runs playbook in a thread."""
+    from app.database import SessionLocal
+    import threading
+
+    db = SessionLocal()
+    try:
+        jt = crud.get_job_template(db, job_template_id)
+        if not jt:
+            return
+        inv_content = ""
+        if jt.inventory_id:
+            inv = crud.get_inventory(db, jt.inventory_id)
+            inv_content = inv.content if inv else ""
+        extra = jt.extra_vars or ""
+        try:
+            playbook_path, inv_content, extra, ssh_key, ssh_password, vault_pass = _resolve_playbook_path_and_credentials(
+                db, jt, inv_content, extra
+            )
+        except Exception as e:
+            job = crud.create_job(
+                db, project_id=jt.project_id, job_template_id=jt.id,
+                playbook_path=jt.playbook_path, inventory_content=inv_content, extra_vars=extra, status="pending",
+            )
+            crud.update_job_status(db, job.id, "failed", f"Setup failed: {e}")
+            return
+        job = crud.create_job(
+            db,
+            project_id=jt.project_id,
+            job_template_id=jt.id,
+            playbook_path=playbook_path,
+            inventory_content=inv_content,
+            extra_vars=extra,
+            status="pending",
+        )
+        job_id, path, inv_c, ext, sk, sp, vp = job.id, playbook_path, inv_content, extra, ssh_key, ssh_password, vault_pass
+
+        def run():
+            db2 = SessionLocal()
+            try:
+                runners.run_playbook(
+                    db2,
+                    job_id=job_id,
+                    playbook_path=path,
+                    inventory_content=inv_c,
+                    extra_vars=ext,
+                    credential_ssh_key=sk,
+                    credential_ssh_password=sp,
+                    credential_vault_password=vp,
+                )
+            finally:
+                db2.close()
+
+        threading.Thread(target=run, daemon=True).start()
+    finally:
+        db.close()

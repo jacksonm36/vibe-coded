@@ -47,5 +47,15 @@ def init_db():
                     conn.commit()
                 except Exception:
                     conn.rollback()
-                    # Column likely already exists
+                    pass
+            for col, sql in [
+                ("schedule_enabled", "ALTER TABLE job_templates ADD COLUMN schedule_enabled BOOLEAN DEFAULT 0"),
+                ("schedule_cron", "ALTER TABLE job_templates ADD COLUMN schedule_cron VARCHAR(128)"),
+                ("schedule_tz", "ALTER TABLE job_templates ADD COLUMN schedule_tz VARCHAR(64)"),
+            ]:
+                try:
+                    conn.execute(text(sql))
+                    conn.commit()
+                except Exception:
+                    conn.rollback()
                     pass

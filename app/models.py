@@ -80,6 +80,10 @@ class JobTemplate(Base):
     inventory_id = Column(Integer, ForeignKey("inventories.id", ondelete="RESTRICT"), nullable=True, index=True)
     credential_id = Column(Integer, ForeignKey("credentials.id", ondelete="SET NULL"), nullable=True, index=True)
     extra_vars = Column(Text, default="")  # YAML or JSON
+    # Optional schedule: cron expression (e.g. "0 2 * * *" = daily 2am), timezone (e.g. "UTC", "Europe/Budapest")
+    schedule_enabled = Column(Boolean, default=False, nullable=False)
+    schedule_cron = Column(String(128), nullable=True)  # 5-field cron: min hour day month dow
+    schedule_tz = Column(String(64), nullable=True, default="UTC")
     created_at = Column(DateTime, default=_utcnow)
     updated_at = Column(DateTime, default=_utcnow, onupdate=_utcnow)
 

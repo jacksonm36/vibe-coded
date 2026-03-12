@@ -8,6 +8,7 @@ from fastapi.responses import FileResponse
 
 from app.database import init_db
 from app.api import projects, inventories, credentials, job_templates, jobs
+from app import scheduler as sched
 
 app = FastAPI(
     title="Ansible Control Panel",
@@ -56,6 +57,12 @@ async def add_security_headers(request: Request, call_next) -> Response:
 @app.on_event("startup")
 def startup():
     init_db()
+    sched.start_scheduler()
+
+
+@app.on_event("shutdown")
+def shutdown():
+    sched.stop_scheduler()
 
 
 @app.get("/")

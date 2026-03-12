@@ -108,6 +108,9 @@ class JobTemplateBase(BaseModel):
     inventory_id: Optional[int] = None
     credential_id: Optional[int] = None
     extra_vars: str = Field("", max_length=65536)
+    schedule_enabled: bool = False
+    schedule_cron: Optional[str] = Field(None, max_length=128)
+    schedule_tz: Optional[str] = Field(None, max_length=64)
 
 
 class JobTemplateCreate(JobTemplateBase):
@@ -121,6 +124,9 @@ class JobTemplateUpdate(BaseModel):
     inventory_id: Optional[int] = None
     credential_id: Optional[int] = None
     extra_vars: Optional[str] = Field(None, max_length=65536)
+    schedule_enabled: Optional[bool] = None
+    schedule_cron: Optional[str] = Field(None, max_length=128)
+    schedule_tz: Optional[str] = Field(None, max_length=64)
 
 
 class JobTemplateRead(JobTemplateBase):
