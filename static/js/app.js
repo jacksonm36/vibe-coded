@@ -57,7 +57,9 @@ function setPage(page) {
   });
   render();
   clearRefresh();
-  if (page === 'dashboard' || page === 'jobs') startRefresh();
+  // Auto-refresh on all main pages so project/credential/template changes
+  // and job status updates appear without manual reload.
+  startRefresh();
 }
 
 function render() {
@@ -607,10 +609,10 @@ async function reloadAndRender() {
   render();
 }
 
-// Init: nav + load data + render + auto-refresh on dashboard/jobs
+// Init: nav + load data + render + auto-refresh
 qsAll('.sidebar-nav a').forEach(a => {
   a.onclick = (e) => { e.preventDefault(); setPage(a.dataset.page); };
 });
 reloadAndRender().then(() => {
-  if (currentPage === 'dashboard' || currentPage === 'jobs') startRefresh();
+  startRefresh();
 });
