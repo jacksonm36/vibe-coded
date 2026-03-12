@@ -410,7 +410,7 @@ function openProjectModal(id) {
         <select id="modal-git-cred"><option value="">— None (public repo) —</option>${credOptions}</select>
       </div>
     `,
-    `<button class="btn btn-secondary" onclick="closeModal()">Cancel</button>
+    `<button class="btn btn-secondary" data-action="close-modal">Cancel</button>
      <button class="btn btn-primary" id="modal-save-project" data-id="${id || ''}">Save</button>`
   );
   qs('#modal-save-project').onclick = async () => {
@@ -447,7 +447,7 @@ function openInventoryModal(id) {
         <textarea id="modal-content" placeholder="[all]\nhost1\nhost2" style="min-height:180px">${inv ? escapeHtml(inv.content) : ''}</textarea>
       </div>
     `,
-    `<button class="btn btn-secondary" onclick="closeModal()">Cancel</button>
+    `<button class="btn btn-secondary" data-action="close-modal">Cancel</button>
      <button class="btn btn-primary" id="modal-save-inv" data-id="${id || ''}">Save</button>`
   );
   const sel = qs('#modal-inv-project');
@@ -492,7 +492,7 @@ function openCredentialModal(id) {
         <textarea id="modal-secret" placeholder="${c ? 'Leave blank to keep existing' : 'Paste private key, password, or token'}">${c ? '' : ''}</textarea>
       </div>
     `,
-    `<button class="btn btn-secondary" onclick="closeModal()">Cancel</button>
+    `<button class="btn btn-secondary" data-action="close-modal">Cancel</button>
      <button class="btn btn-primary" id="modal-save-cred" data-id="${id || ''}">Save</button>`
   );
   const sel = qs('#modal-cred-project');
@@ -748,7 +748,7 @@ async function pullProject(id) {
     showModal(
       'Pull from Git',
       `<p>${escapeHtml(res.message || 'Pulled successfully.')}</p><p><strong>Files found (use in Job Templates):</strong></p><p class="text-muted" style="font-size:0.85rem;margin-top:0.25rem;">.yml/.yaml = Ansible playbooks (run with inventory). .sh, .ps1, .py, etc. = scripts (run directly).</p>${list}`,
-      '<button class="btn btn-primary" onclick="closeModal(); reloadAndRender();">Close</button>'
+      '<button class="btn btn-primary" data-action="close-modal">Close</button>'
     );
   } catch (e) {
     showError(e);
