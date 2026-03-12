@@ -1,7 +1,7 @@
 import os
 from pathlib import Path
 
-from fastapi import APIRouter, Depends, HTTPException, BackgroundTasks
+from fastapi import APIRouter, Depends, HTTPException, BackgroundTasks, Query
 from sqlalchemy.orm import Session
 
 from app.database import get_db
@@ -68,7 +68,11 @@ def _resolve_playbook_path_and_credentials(db: Session, jt, inv_content: str, ex
 
 
 @router.get("", response_model=list[schemas.JobListSummary])
-def list_jobs(project_id: int | None = None, limit: int = 100, db: Session = Depends(get_db)):
+def list_jobs(
+    project_id: int | None = None,
+    limit: int = Query(100, ge=1, le=500),
+    db: Session = Depends(get_db),
+):
     if project_id is not None:
         return list(crud.get_jobs_by_project(db, project_id, limit=limit))
     return list(crud.get_recent_jobs(db, limit=limit))

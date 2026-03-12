@@ -107,7 +107,7 @@ class JobTemplateBase(BaseModel):
     playbook_path: str = Field(..., min_length=1, max_length=512)
     inventory_id: Optional[int] = None
     credential_id: Optional[int] = None
-    extra_vars: str = ""
+    extra_vars: str = Field("", max_length=65536)
 
 
 class JobTemplateCreate(JobTemplateBase):
@@ -120,7 +120,7 @@ class JobTemplateUpdate(BaseModel):
     playbook_path: Optional[str] = Field(None, min_length=1, max_length=512)
     inventory_id: Optional[int] = None
     credential_id: Optional[int] = None
-    extra_vars: Optional[str] = None
+    extra_vars: Optional[str] = Field(None, max_length=65536)
 
 
 class JobTemplateRead(JobTemplateBase):
@@ -136,7 +136,7 @@ class JobTemplateRead(JobTemplateBase):
 # Job
 class JobLaunch(BaseModel):
     job_template_id: int
-    extra_vars_override: str = ""
+    extra_vars_override: str = Field("", max_length=65536)
 
 
 class JobRead(BaseModel):
